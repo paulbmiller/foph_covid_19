@@ -103,14 +103,58 @@ def visualize_fully_vacc():
     # print(results.summary())
 
     # Predict 30 days
-    predictions = results.predict(start=len(CH_vacc_df['sumTotal']), end=len(CH_vacc_df['sumTotal'])+30, typ='levels').rename('SARIMA forecast')
+    predictions = results.predict(start=len(CH_vacc_df['sumTotal']),
+                                  end=len(CH_vacc_df['sumTotal'])+30, typ='levels').rename('SARIMA forecast')
 
     CH_vacc_df = pd.concat([CH_vacc_df, predictions], axis=1)
 
-    CH_vacc_df[['sumTotal', 'SARIMA forecast']].plot(title='Forecasting of Covid-19 vaccinations using a SARIMA model')
+    CH_vacc_df[['sumTotal', 'SARIMA forecast']].plot(
+        title='Forecasting of fully vaccinated people using a SARIMA model')
     plt.gcf().axes[0].yaxis.get_major_formatter().set_scientific(False)
     plt.axhline(y=CH_pop_total * 0.8, color='g', label='polio herd immunity')
     plt.axhline(y=CH_pop_total * 0.95, color='c', label='measles herd immunity')
+    plt.legend()
+    plt.show()
+
+
+def visualize_doses_admin():
+    fully_vacc = preprocess(VACCDOSESADMIN)
+    CH_pop_total = fully_vacc.loc['CH', :]['pop'].values[0]
+
+    fully_vacc_cantons = fully_vacc.drop('CH', axis=0, level='geoRegion')
+    fully_vacc_cantons_sum = fully_vacc_cantons['sumTotal'].sum(axis=0, level='date')
+
+    CH_vacc_df = fully_vacc_cantons_sum.to_frame()
+
+    CH_vacc_df = CH_vacc_df[CH_vacc_df['sumTotal'] > 0]
+
+    CH_vacc_df['percentTotal'] = CH_vacc_df['sumTotal'] / CH_pop_total * 100
+
+    CH_vacc_df['logTotal'] = np.log(CH_vacc_df['sumTotal'])
+
+    # CH_vacc_df.plot(y='sumTotal', legend=True, title='Sum of fully vaccinated over total CH population')
+    # CH_vacc_df.plot(y='percentTotal', legend=True, title='Percentage of fully vaccinated over total CH population')
+    # CH_vacc_df.plot(y='logTotal', legend=True, title='Natural logarithm of the sum of fully vaccinated in CH')
+
+    # result = seasonal_decompose(CH_vacc_df['sumTotal'], model='add')
+    # result.plot()
+
+    # stepwise_fit = auto_arima(CH_vacc_df['sumTotal'], start_p=0, start_q=0, max_p=5, max_q=5, m=7, trace=True)
+    # print(stepwise_fit.summary())
+
+    model = SARIMAX(CH_vacc_df['sumTotal'], order=(4, 2, 2), seasonal_order=(1, 0, 1, 7))
+    results = model.fit(disp=False)
+    # print(results.summary())
+
+    # Predict 30 days
+    predictions = results.predict(start=len(CH_vacc_df['sumTotal']), end=len(CH_vacc_df['sumTotal']) + 30,
+                                  typ='levels').rename('SARIMA forecast')
+
+    CH_vacc_df = pd.concat([CH_vacc_df, predictions], axis=1)
+
+    CH_vacc_df[['sumTotal', 'SARIMA forecast']].plot(
+        title='Forecasting of administered vaccines using a SARIMA model')
+    plt.gcf().axes[0].yaxis.get_major_formatter().set_scientific(False)
     plt.legend()
     plt.show()
 
@@ -119,5 +163,5 @@ if __name__ == '__main__':
     download_data()
     check_sum_cases()
     check_sum_fullyvacc()
-    df = visualize_fully_vacc()
-
+    visualize_fully_vacc()
+    visualize_doses_admin()
