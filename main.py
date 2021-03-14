@@ -43,7 +43,7 @@ def check_sum_cases():
     # Function to check if the sum of cases in cantons is equal to the CH values
     df = preprocess(CASES_GEOREGION)
 
-    dates = df.loc['CH', :]._get_label_or_level_values('date')
+    dates = df.loc['CH', :].index.get_level_values('date')
     cantons = df.drop('CH', axis=0, level='geoRegion')
     cantons_sum = cantons.sum(axis=0, level='date')
 
@@ -62,7 +62,7 @@ def check_sum_fullyvacc():
     # Function to check if the sum of canton values for the sumTotal column are equal to the CH column values
     df = preprocess(FULLYVACC)
 
-    dates = df.loc['CH', :]._get_label_or_level_values('date')
+    dates = df.loc['CH', :].index.get_level_values('date')
     cantons = df.drop('CH', axis=0, level='geoRegion')['sumTotal']
     cantons_sum = cantons.sum(axis=0, level='date')
 
@@ -78,7 +78,7 @@ def check_sum_fullyvacc():
 
 
 def visualize(fn, column, plot_title, plot_herd_immunities=False, agg_cantons=False, sarima_forecast=0, ax=None,
-              column_label=None, colors=['cadetblue', 'coral', 'lightpink', 'limegreen']):
+              column_label=None, colors=None):
     """
     Function to draw plots for a column.
 
@@ -95,11 +95,14 @@ def visualize(fn, column, plot_title, plot_herd_immunities=False, agg_cantons=Fa
     """
     df = preprocess(fn)
 
-    if not column_label:
+    if colors is None:
+        colors = ['cadetblue', 'coral', 'lightpink', 'limegreen']
+
+    if column_label is None:
         column_label = column
 
     if plot_herd_immunities:
-        CH_pop_total = df.loc['CH', :]['pop'].values[0]
+        ch_pop_total = df.loc['CH', :]['pop'].values[0]
 
     if agg_cantons:
         df = df.drop('CH', axis=0, level='geoRegion')
@@ -126,7 +129,7 @@ def visualize(fn, column, plot_title, plot_herd_immunities=False, agg_cantons=Fa
                                       typ='levels').rename('SARIMA forecast')
         df = pd.concat([df, predictions], axis=1)
 
-    if not ax:
+    if ax is None:
         ax = plt.gca()
 
     print(df)
@@ -138,11 +141,11 @@ def visualize(fn, column, plot_title, plot_herd_immunities=False, agg_cantons=Fa
 
     ax.yaxis.get_major_formatter().set_scientific(False)
     if plot_herd_immunities:
-        ax.axhline(y=CH_pop_total * 0.8, color=colors[2], label='polio herd immunity')
-        ax.axhline(y=CH_pop_total * 0.95, color=colors[3], label='measles herd immunity')
+        ax.axhline(y=ch_pop_total * 0.8, color=colors[2], label='polio herd immunity')
+        ax.axhline(y=ch_pop_total * 0.95, color=colors[3], label='measles herd immunity')
     ax.legend()
 
-    if not ax:
+    if ax is None:
         plt.show()
 
 
