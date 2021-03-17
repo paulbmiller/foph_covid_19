@@ -7,4 +7,4 @@ At this time, I've implemented some functions to check that the sums of some col
 
 ## Examples
 Examples of plots which can be drawn :
-![Multiple subplots](example.jpg)
+![Multiple subplots](example2.jpg)
