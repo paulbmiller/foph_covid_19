@@ -77,8 +77,8 @@ def check_sum_fullyvacc():
         print('Sum of cases for fully vaccinated are consistent.')
 
 
-def visualize(fn, column, plot_title, plot_herd_immunities=False, agg_cantons=False, sarima_forecast=0, ax=None,
-              column_label=None, colors=None):
+def visualize(fn, column, plot_title, plot_herd_immunities=False, agg_cantons=False, sarima_forecast=None, ax=None,
+              column_label=None, colors=None, remove_cumul=False, avg_7days=False):
     """
     Function to draw plots for a column.
 
@@ -87,16 +87,19 @@ def visualize(fn, column, plot_title, plot_herd_immunities=False, agg_cantons=Fa
     :param plot_title: Title of the plot or subplot
     :param plot_herd_immunities: Whether we want to plot the lines for herd immunities for vaccines
     :param agg_cantons: Whether we want to use the aggregation of cantons (True) or the values at the CH index (False)
-    :param sarima_forecast: Number of days to forecast using a SARIMA model
+    :param sarima_forecast: Tuple of the column to forecast and the number of days
     :param ax: The axis to which matplotlib will draw the plot
     :param column_label: The label we want to use for drawing the column
     :param colors: Tuple of colors used
+    :param remove_cumul: Whether we want to diff the column before plotting
+    :param avg_7days: Plot the 7 days average of the given column
     :return: None
     """
     df = preprocess(fn)
 
     if colors is None:
-        colors = ['cadetblue', 'coral', 'lightpink', 'limegreen']
+        colors = ['cadetblue', 'coral', 'limegreen', 'lightpink', 'orange']
+    curr_color = 0
 
     if column_label is None:
         column_label = column
@@ -116,33 +119,53 @@ def visualize(fn, column, plot_title, plot_herd_immunities=False, agg_cantons=Fa
     # result = seasonal_decompose(df[column], model='add')
     # result.plot()
 
-    if sarima_forecast > 0:
-        stepwise_fit = auto_arima(df[column], start_p=0, start_q=0, max_p=5, max_q=5, m=7, trace=True)
-        print(stepwise_fit.summary())
-
-        model = SARIMAX(df[column], order=stepwise_fit.order, seasonal_order=stepwise_fit.seasonal_order)
-        results = model.fit(disp=False)
-        # print(results.summary())
-
-        # Predict ´sarima_forecast´ days
-        predictions = results.predict(start=len(df[column]), end=len(df[column]) + sarima_forecast,
-                                      typ='levels').rename('SARIMA forecast')
-        df = pd.concat([df, predictions], axis=1)
-
     if ax is None:
         ax = plt.gca()
 
     print(df)
 
-    ax.plot(df[column], label=column_label, color=colors[0])
-    if sarima_forecast > 0:
-        ax.plot(df['SARIMA forecast'], label='SARIMA forecast', color=colors[1])
+    if remove_cumul:
+        first_val = df[column].iloc[0]
+        df[column] = df[column].diff()
+        df[column].iloc[0] = first_val
+
+    ax.plot(df[column], label=column_label, color=colors[curr_color])
+    curr_color += 1
+
+    if avg_7days:
+        df['avg_7days'] = df[column].rolling(7).mean()
+        ax.plot(df['avg_7days'], label='7d average', color=colors[curr_color])
+        curr_color += 1
+
+    if sarima_forecast is not None:
+        column, nb_days = sarima_forecast
+        stepwise_fit = auto_arima(df[column].dropna(), start_p=0, start_q=0, max_p=5, max_q=5, m=7, trace=True)
+        print(stepwise_fit.summary())
+
+        model = SARIMAX(df[column].dropna(), order=stepwise_fit.order, seasonal_order=stepwise_fit.seasonal_order)
+        results = model.fit(disp=False)
+        # print(results.summary())
+
+        # Predict ´sarima_forecast´ days
+        predictions = results.predict(start=len(df[column].dropna()), end=len(df[column].dropna()) + nb_days,
+                                      typ='levels').rename('SARIMA forecast')
+        last_date = df.index[-1]
+        df = pd.concat([df, predictions], axis=1)
+
+        # In order to have a line from the last value
+        df['SARIMA forecast'].loc[last_date] = df[column].loc[last_date]
+
+        ax.plot(df['SARIMA forecast'], label='SARIMA forecast', color=colors[curr_color])
+        curr_color += 1
+
     ax.set_title(plot_title)
 
     ax.yaxis.get_major_formatter().set_scientific(False)
     if plot_herd_immunities:
-        ax.axhline(y=ch_pop_total * 0.8, color=colors[2], label='polio herd immunity')
-        ax.axhline(y=ch_pop_total * 0.95, color=colors[3], label='measles herd immunity')
+        ax.axhline(y=ch_pop_total * 0.8, color=colors[curr_color], label='polio herd immunity')
+        curr_color += 1
+        ax.axhline(y=ch_pop_total * 0.95, color=colors[curr_color], label='measles herd immunity')
+        curr_color += 1
     ax.legend()
 
     if ax is None:
@@ -153,13 +176,19 @@ if __name__ == '__main__':
     download_data()
     check_sum_cases()
     check_sum_fullyvacc()
+
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
-    visualize(CASES_GEOREGION, 'entries', 'Switzerland Covid-19 confirmed cases', ax=ax1, column_label='confirmed',
-              colors=['cadetblue'])
-    visualize(DEATHS_GEOREGION, 'entries', 'Switzerland Covid-19 deaths', ax=ax2, column_label='deaths',
-              colors=['orangered'])
-    visualize(FULLYVACC, 'sumTotal', 'Forecasting of fully vaccinated people using a SARIMA model', agg_cantons=True,
-              plot_herd_immunities=True, sarima_forecast=30, ax=ax3)
-    visualize(VACCDOSESADMIN, 'sumTotal', 'Forecasting of administered vaccines using a SARIMA model',
-              sarima_forecast=30, agg_cantons=True, ax=ax4)
+
+    visualize(VACCDOSESADMIN, 'sumTotal', 'New administered vaccines in Switzerland', agg_cantons=True,
+              remove_cumul=True, avg_7days=True, column_label='daily doses administered',
+              sarima_forecast=('sumTotal', 30), ax=ax1)
+    visualize(VACCDOSESDELIV, 'sumTotal', 'Total vaccines available in Switzerland', agg_cantons=True,
+              column_label='sum of delivered doses', ax=ax2)
+    visualize(VACCDOSESADMIN, 'sumTotal', 'Total vaccines doses available and administered in Switzerland',
+              agg_cantons=True, column_label='sum of administered doses', ax=ax2, colors=['orange'])
+    visualize(FULLYVACC, 'sumTotal', 'New fully vaccinated people in Switzerland', agg_cantons=True,
+              remove_cumul=True, avg_7days=True, sarima_forecast=('sumTotal', 30), ax=ax3, column_label='daily fully vacc')
+    visualize(FULLYVACC, 'sumTotal', 'Total fully vaccinated people in Switzerland', agg_cantons=True,
+              sarima_forecast=('sumTotal', 30), ax=ax4, column_label='sum of fully vaccinated')
+
     plt.show()
